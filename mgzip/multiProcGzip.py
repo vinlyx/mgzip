@@ -7,6 +7,7 @@ Copyright (c) 2019 Vincent Li
 """
 
 import os, time
+import builtins
 import struct
 import zlib
 from gzip import GzipFile, write32u, READ, WRITE, FEXTRA, FNAME, FCOMMENT
@@ -22,6 +23,32 @@ class RandomAccessGzipFile(GzipFile):
     def __init__(self, filename=None, mode=None,
                  compresslevel=9, fileobj=None, mtime=None,
                  thread=None, blocksize=10**7):
+
+        if mode and ('t' in mode or 'U' in mode):
+            raise ValueError("Invalid mode: {!r}".format(mode))
+        if mode and 'b' not in mode:
+            mode += 'b'
+        if mode and "a" in mode:
+            # fix append mode
+            if filename and os.path.exists(filename):
+                # if append to exists file, use 'r+' mode
+                if "+" in mode:
+                    # a+ --> r+
+                    fixMode = mode.replace("a", "r")
+                else:
+                    # a --> r+
+                    fixMode = mode.replace("a", "r+")
+            else:
+                # a --> w
+                fixMode = mode.replace("a", "w")
+        else:
+            fixMode = mode
+        if fileobj is None:
+            fileobj = self.myfileobj = builtins.open(filename, fixMode or 'rb')
+        if mode and "a" in mode:
+            # move to the end for append mode
+            fileobj.seek(0, 2)
+
         super().__init__(filename=filename, mode=mode, compresslevel=compresslevel,
                                              fileobj=fileobj, mtime=mtime)
 
@@ -34,7 +61,6 @@ class RandomAccessGzipFile(GzipFile):
 
     def _write_gzip_header(self):
         self.startIdx = self.fileobj.tell()         # save start index for append mode
-        print("MemberStart", self.startIdx)
         self.fileobj.write(b'\037\213')             # magic header
         self.fileobj.write(b'\010')                 # compression method
         try:
@@ -62,14 +88,15 @@ class RandomAccessGzipFile(GzipFile):
         self.fileobj.write(b'\x14\x00')
         # EXTRA FLAG FORMAT:
         # +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-        # |SI1|SI2|  LEN  |       OFFSET (8 Bytes)        |     ORIGINAL SIZE (8 Bytes)   |
+        # |SI1|SI2|  LEN  |       OFFSET (8 Bytes)        |       RAW SIZE (8 Bytes)      |
         # +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+        # OFFSET:   The whole size of current member
+        # RAW SIZE: raw text size in uint64 (since raw size is not able to represent >4GB file)
         # SI1: 'I'  SI2: 'G' (Indexed Gzip file)
         self.fileobj.write(b'IG')
         # LEN: 16 bytes
         self.fileobj.write(b'\x10\x00')
         # fill zero
-        print("FEXTRAOffset", self.fileobj.tell())
         self.fileobj.write(self.INIT_ZEROS)
         if fname:
             self.fileobj.write(fname + b'\000')
@@ -86,16 +113,11 @@ class RandomAccessGzipFile(GzipFile):
                 # self.size may exceed 2GB, or even 4GB
                 write32u(fileobj, self.size & 0xffffffff)
                 currOffset = fileobj.tell()
-                print("memberEnd", currOffset)
                 # FEXTRA Offset is 16 bytes shifted from start position
                 fileobj.seek(self.startIdx + 16)
-                print("???", fileobj.tell())
                 fileobj.write(struct.pack("<Q", currOffset - self.startIdx))
                 fileobj.write(struct.pack("<Q", self.size))
-                print("???End", fileobj.tell())
                 fileobj.seek(currOffset)
-                # fileobj.seek()
-                print("fileEnd", fileobj.tell())
             elif self.mode == READ:
                 self._buffer.close()
         finally:
