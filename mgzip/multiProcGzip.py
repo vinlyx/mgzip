@@ -10,6 +10,7 @@ import os, time
 import builtins
 import struct
 import zlib
+from io import BytesIO
 from gzip import GzipFile, write32u, READ, WRITE, FEXTRA, FNAME, FCOMMENT
 from multiprocessing.dummy import Pool
 
@@ -22,7 +23,7 @@ class RandomAccessGzipFile(GzipFile):
 
     def __init__(self, filename=None, mode=None,
                  compresslevel=9, fileobj=None, mtime=None,
-                 thread=None, blocksize=10**7):
+                 thread=None, minsize=2*10**7):
 
         if mode and ('t' in mode or 'U' in mode):
             raise ValueError("Invalid mode: {!r}".format(mode))
@@ -53,11 +54,65 @@ class RandomAccessGzipFile(GzipFile):
                                              fileobj=fileobj, mtime=mtime)
 
         self.thread = thread
-        self.blocksize = blocksize # use 10M blocksize as default
+        self.minBlockSize = minsize # use 20M minimum blocksize as default
         if not self.thread:
             ## thread is None or 0, use all available CPUs
             cpuNum = os.cpu_count()
             self.thread = cpuNum
+        self.pool = Pool(self.thread)
+        self.poolRlt = []
+        self.smallBuffer = io.BytesIO()
+
+
+    def _compressFunc(self, data):
+        cpr = zlib.compressobj(self.compresslevel,
+                               zlib.DEFLATED,
+                               -zlib.MAX_WBITS,
+                               9, # use memory level 9 > zlib.DEF_MEM_LEVEL (8) for better performance
+                               0)
+        bodyBytes = cpr.compress(data)
+        resBytes = cpr.flush(zlib.Z_SYNC_FLUSH)
+        crc = zlib.crc32(data)
+        return (bodyBytes, resBytes, crc, data.nbytes)
+
+    def write(self, data):
+        self._check_not_closed()
+        if self.mode != WRITE:
+            import errno
+            raise OSError(errno.EBADF, "write() on read-only GzipFile object")
+
+        if self.fileobj is None:
+            raise ValueError("write() on closed GzipFile object")
+
+        # if isinstance(data, bytes):
+        #     length = len(data)
+        # else:
+        #     # accept any data that supports the buffer protocol
+        #     data = memoryview(data)
+        #     length = data.nbytes
+        data = memoryview(data)
+        length = data.nbytes
+
+        if length >= self.minBlockSize:
+            self.fileobj.write(self.compress.flush(zlib.Z_SYNC_FLUSH))
+            if length < 2 * self.minBlockSize:
+                # use sigle thread
+                self.poolRlt.append(self.pool.apply_async(self._compressFunc, args=(data)))
+        elif 0 < length < self.minBlockSize:
+            self.smallBuffer.write(data)
+            if self.smallBuffer.__sizeof__() > self.minBlockSize:
+                byteData = self.smallBuffer.getbuffer()
+
+            # less than minimum block size, just use default compression
+            # FIXME: should just write to memory buffer instead of call compress every time
+            # or directly send to compress and handle the compress buffer
+            # need to compare the speed of these 2 method here
+            self.fileobj.write(self.compress.compress(data))
+            self.size += length
+            self.crc = zlib.crc32(data, self.crc)
+            self.offset += length
+
+        return length
 
     def _write_gzip_header(self):
         self.startIdx = self.fileobj.tell()         # save start index for append mode

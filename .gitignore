@@ -5,6 +5,7 @@ __pycache__/
 
 # gz test file
 *.gz
+zipTest
 
 # C extensions
 *.so
