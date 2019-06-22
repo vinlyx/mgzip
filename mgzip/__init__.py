@@ -7,16 +7,16 @@ Copyright (c) 2019 Vincent Li
 """
 
 import gzip as gzlib
-from .multiProcGzip import RandomAccessGzipFile, __version__
+from .multiProcGzip import MulitGzipFile, __version__
 
 __all__ = ["GzipFile", "open", "compress", "decompress"]
 
 
 ## patch GzipFile with ParallelGzipFile
-gzlib.GzipFile = RandomAccessGzipFile
+gzlib.GzipFile = MulitGzipFile
 
 ## original methods
-GzipFile = RandomAccessGzipFile
+GzipFile = MulitGzipFile
 open = gzlib.open
 compress = gzlib.compress
 decompress = gzlib.decompress
