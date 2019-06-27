@@ -11,44 +11,19 @@ import builtins
 import struct
 import zlib
 from io import BytesIO
-from gzip import GzipFile, write32u, READ, WRITE, FEXTRA, FNAME, FCOMMENT
+from gzip import GzipFile, write32u, _GzipReader, _PaddedFile, READ, WRITE, FEXTRA, FNAME, FCOMMENT, FHCRC
 from multiprocessing.dummy import Pool
 
 __version__ = "0.1.0"
 
+SID = b'IG' # subfield ID of indexed gzip file
+
 class MulitGzipFile(GzipFile):
     """ docstring of MulitGzipFile """
-
-    # INIT_ZEROS = b'\x00' * 16
 
     def __init__(self, filename=None, mode=None,
                  compresslevel=9, fileobj=None, mtime=None,
                  thread=None, blocksize=5*10**7):
-
-        if mode and ('t' in mode or 'U' in mode):
-            raise ValueError("Invalid mode: {!r}".format(mode))
-        if mode and 'b' not in mode:
-            mode += 'b'
-        if mode and "a" in mode:
-            # fix append mode
-            if filename and os.path.exists(filename):
-                # if append to exists file, use 'r+' mode
-                if "+" in mode:
-                    # a+ --> r+
-                    fixMode = mode.replace("a", "r")
-                else:
-                    # a --> r+
-                    fixMode = mode.replace("a", "r+")
-            else:
-                # a --> w
-                fixMode = mode.replace("a", "w")
-        else:
-            fixMode = mode
-        if fileobj is None:
-            fileobj = self.myfileobj = builtins.open(filename, fixMode or 'rb')
-        if mode and "a" in mode:
-            # move to the end for append mode
-            fileobj.seek(0, 2)
 
         super().__init__(filename=filename, mode=mode, compresslevel=compresslevel,
                                              fileobj=fileobj, mtime=mtime)
@@ -62,7 +37,13 @@ class MulitGzipFile(GzipFile):
         self.pool = Pool(self.thread)
         self.pool_result = []
         self.small_buf = BytesIO()
-        # self.buffSize = 0
+
+        if self.mode == READ:
+            self.index = []
+
+    def __repr__(self):
+        s = repr(self.fileobj)
+        return '<mgzip ' + s[1:-1] + ' ' + hex(id(self)) + '>'
 
     def _write_gzip_header(self):
         ## ignored to write original header
@@ -204,7 +185,7 @@ class MulitGzipFile(GzipFile):
         # LEN:           Length of subfield body, always 16 bits
         # MEMBER SIZE:   The size of current member
         # RAW SIZE:      Raw text size in uint64 (since raw size is not able to represent >4GB file)
-        self.fileobj.write(b'IG')                   # subfield ID (IG), 2 bytes
+        self.fileobj.write(SID)                   # subfield ID (IG), 2 bytes
         # LEN: 16 bytes
         self.fileobj.write(b'\x10\x00')             # subfield len (16), 2 bytes
         # compressed data size: 16 + 8 + 8 + len(fname) + 1 + data + 8
@@ -238,3 +219,147 @@ class MulitGzipFile(GzipFile):
     def flush(self):
         self._flush_pool(force=True)
         self.fileobj.flush()
+
+
+class _MulitGzipReader(_GzipReader):
+    def __init__(self, fp):
+        super().__init__(fp)
+
+        self.memberidx = []
+
+    def _init_read(self):
+        self._crc = zlib.crc32(b"")
+        self._stream_size = 0  # Decompressed size of unconcatenated stream
+
+    def _read_exact(self, n):
+        '''Read exactly *n* bytes from `self._fp`
+
+        This method is required because self._fp may be unbuffered,
+        i.e. return short reads.
+        '''
+
+        data = self._fp.read(n)
+        while len(data) < n:
+            b = self._fp.read(n - len(data))
+            if not b:
+                raise EOFError("Compressed file ended before the "
+                               "end-of-stream marker was reached")
+            data += b
+        return data
+
+    def _read_gzip_header(self):
+        magic = self._fp.read(2)
+        if magic == b'':
+            return False
+
+        if magic != b'\037\213':
+            raise OSError('Not a gzipped file (%r)' % magic)
+
+        (method, flag,
+         self._last_mtime) = struct.unpack("<BBIxx", self._read_exact(8))
+        if method != 8:
+            raise OSError('Unknown compression method')
+
+        if flag & FEXTRA:
+            # Read & discard the extra field, if present
+            extra_len, sid = struct.unpack("<H2s", self._read_exact(4))
+            if sid == SID:
+                _, msize, rsize = struct.unpack("<HQQ" ,self._read_exact(extra_len - 2))
+                self.memberidx.append((msize, rsize))
+                print("block", len(self.memberidx), msize, rsize)
+
+        if flag & FNAME:
+            # Read and discard a null-terminated string containing the filename
+            while True:
+                s = self._fp.read(1)
+                if not s or s==b'\000':
+                    break
+        if flag & FCOMMENT:
+            # Read and discard a null-terminated string containing a comment
+            while True:
+                s = self._fp.read(1)
+                if not s or s==b'\000':
+                    break
+        if flag & FHCRC:
+            self._read_exact(2)     # Read & discard the 16-bit header CRC
+        return True
+
+    def read(self, size=-1):
+        if size < 0:
+            return self.readall()
+        # size=0 is special because decompress(max_length=0) is not supported
+        if not size:
+            return b""
+
+        # For certain input data, a single
+        # call to decompress() may not return
+        # any data. In this case, retry until we get some data or reach EOF.
+        while True:
+            if self._decompressor.eof:
+                # Ending case: we've come to the end of a member in the file,
+                # so finish up this member, and read a new gzip header.
+                # Check the CRC and file size, and set the flag so we read
+                # a new member
+                self._read_eof()
+                self._new_member = True
+                self._decompressor = self._decomp_factory(
+                    **self._decomp_args)
+
+            if self._new_member:
+                # If the _new_member flag is set, we have to
+                # jump to the next member, if there is one.
+                self._init_read()
+                if not self._read_gzip_header():
+                    self._size = self._pos
+                    return b""
+                self._new_member = False
+
+            # Read a chunk of data from the file
+            buf = self._fp.read(4096)
+
+            uncompress = self._decompressor.decompress(buf, size)
+            if self._decompressor.unconsumed_tail != b"":
+                self._fp.prepend(self._decompressor.unconsumed_tail)
+            elif self._decompressor.unused_data != b"":
+                # Prepend the already read bytes to the fileobj so they can
+                # be seen by _read_eof() and _read_gzip_header()
+                self._fp.prepend(self._decompressor.unused_data)
+
+            if uncompress != b"":
+                break
+            if buf == b"":
+                raise EOFError("Compressed file ended before the "
+                               "end-of-stream marker was reached")
+
+        self._add_read_data( uncompress )
+        self._pos += len(uncompress)
+        return uncompress
+
+    def _add_read_data(self, data):
+        self._crc = zlib.crc32(data, self._crc)
+        self._stream_size = self._stream_size + len(data)
+
+    def _read_eof(self):
+        # We've read to the end of the file
+        # We check the that the computed CRC and size of the
+        # uncompressed data matches the stored values.  Note that the size
+        # stored is the true file size mod 2**32.
+        crc32, isize = struct.unpack("<II", self._read_exact(8))
+        if crc32 != self._crc:
+            raise OSError("CRC check failed %s != %s" % (hex(crc32),
+                                                         hex(self._crc)))
+        elif isize != (self._stream_size & 0xffffffff):
+            raise OSError("Incorrect length of data produced")
+
+        # Gzip files can be padded with zeroes and still have archives.
+        # Consume all zero bytes and set the file position to the first
+        # non-zero byte. See http://www.gzip.org/#faq8
+        c = b"\x00"
+        while c == b"\x00":
+            c = self._fp.read(1)
+        if c:
+            self._fp.prepend(c)
+
+    def _rewind(self):
+        super()._rewind()
+        self._new_member = True

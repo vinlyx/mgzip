@@ -17,7 +17,22 @@ def _test():
     # if not args:
     #     args = ["-"]
     if decompress:
-        pass
+        if arg != "-":
+            outf = arg + ".dcp"
+            outf = "/dev/null"
+            fh = open(outf, "wb")
+            gh = mgzip.open(arg, "rb", 100*10**6)
+            t0 = time.time()
+            data = gh.read()
+            t1 = time.time()
+            fh.write(data)
+            fh.close()
+            gh.close()
+            size = len(data)/(1024**2)
+            seconds = t1 - t0
+            speed = size/seconds
+            nsize = os.stat(arg).st_size
+            print("Decompressed {:.2f} MB data in {:.2f} S, Speed: {:.2f} MB/s, Rate: {:.2f} %".format(size, seconds, speed, nsize/len(data)*100))
     else:
         if arg != "-":
             outf = arg + ".gz"
@@ -29,8 +44,8 @@ def _test():
             gh.close()
             t1 = time.time()
             size = len(data)/(1024**2)
-            speed = size/(t1 - t0)
             seconds = t1 - t0
+            speed = size/seconds
             nsize = os.stat(outf).st_size
             print("Compressed {:.2f} MB data in {:.2f} S, Speed: {:.2f} MB/s, Rate: {:.2f} %".format(size, seconds, speed, nsize/len(data)*100))
 
