@@ -1,5 +1,5 @@
-import mgzip
-# import gzip as mgzip
+# import mgzip
+import gzip as mgzip
 import time
 
 def _test():
@@ -17,22 +17,32 @@ def _test():
     # if not args:
     #     args = ["-"]
     if decompress:
+        tsize = 0
         if arg != "-":
-            outf = arg + ".dcp"
+            # outf = arg + ".dcp"
             outf = "/dev/null"
             fh = open(outf, "wb")
-            gh = mgzip.open(arg, "rb", 100*10**6)
+            gh = mgzip.open(arg, "rb")
             t0 = time.time()
-            data = gh.read()
+            # gh.show_index()
+            # data = b"AAA"
+            chunk_size = 10**7
+            while True:
+                data = gh.read(chunk_size)
+                # data = gh.readline()
+                if not data:
+                    break
+                fh.write(data)
+                tsize += len(data)
+            # data = gh.readline()
             t1 = time.time()
-            fh.write(data)
             fh.close()
             gh.close()
-            size = len(data)/(1024**2)
+            size = tsize/(1024**2)
             seconds = t1 - t0
             speed = size/seconds
             nsize = os.stat(arg).st_size
-            print("Decompressed {:.2f} MB data in {:.2f} S, Speed: {:.2f} MB/s, Rate: {:.2f} %".format(size, seconds, speed, nsize/len(data)*100))
+            print("Decompressed {:.2f} MB data in {:.2f} S, Speed: {:.2f} MB/s, Rate: {:.2f} %".format(size, seconds, speed, nsize/tsize*100))
     else:
         if arg != "-":
             outf = arg + ".gz"

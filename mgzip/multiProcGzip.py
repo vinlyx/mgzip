@@ -10,7 +10,7 @@ import os, time
 import builtins
 import struct
 import zlib
-from io import BytesIO
+import io
 from gzip import GzipFile, write32u, _GzipReader, _PaddedFile, READ, WRITE, FEXTRA, FNAME, FCOMMENT, FHCRC
 from multiprocessing.dummy import Pool
 
@@ -18,28 +18,152 @@ __version__ = "0.1.0"
 
 SID = b'IG' # subfield ID of indexed gzip file
 
+def open(filename, mode="rb", compresslevel=9,
+         encoding=None, errors=None, newline=None,
+         thread=None, blocksize=10**8):
+    """Open a gzip-compressed file in binary or text mode.
+
+    The filename argument can be an actual filename (a str or bytes object), or
+    an existing file object to read from or write to.
+
+    The mode argument can be "r", "rb", "w", "wb", "x", "xb", "a" or "ab" for
+    binary mode, or "rt", "wt", "xt" or "at" for text mode. The default mode is
+    "rb", and the default compresslevel is 9.
+
+    For binary mode, this function is equivalent to the GzipFile constructor:
+    GzipFile(filename, mode, compresslevel). In this case, the encoding, errors
+    and newline arguments must not be provided.
+
+    For text mode, a GzipFile object is created, and wrapped in an
+    io.TextIOWrapper instance with the specified encoding, error handling
+    behavior, and line ending(s).
+
+    """
+    if "t" in mode:
+        if "b" in mode:
+            raise ValueError("Invalid mode: %r" % (mode,))
+    else:
+        if encoding is not None:
+            raise ValueError("Argument 'encoding' not supported in binary mode")
+        if errors is not None:
+            raise ValueError("Argument 'errors' not supported in binary mode")
+        if newline is not None:
+            raise ValueError("Argument 'newline' not supported in binary mode")
+
+    gz_mode = mode.replace("t", "")
+    if isinstance(filename, (str, bytes)):
+        binary_file = MulitGzipFile(filename, gz_mode, compresslevel, thread=thread, blocksize=blocksize)
+    elif hasattr(filename, "read") or hasattr(filename, "write"):
+        binary_file = MulitGzipFile(None, gz_mode, compresslevel, filename, thread=thread, blocksize=blocksize)
+    else:
+        raise TypeError("filename must be a str or bytes object, or a file")
+
+    if "t" in mode:
+        return io.TextIOWrapper(binary_file, encoding, errors, newline)
+    else:
+        return binary_file
+
+def compress(data, compresslevel=9, thread=None, blocksize=10**8):
+    """Compress data in one shot and return the compressed string.
+    Optional argument is the compression level, in range of 0-9.
+    """
+    buf = io.BytesIO()
+    with MulitGzipFile(fileobj=buf, mode='wb', compresslevel=compresslevel,
+                       thread=thread, blocksize=blocksize) as f:
+        f.write(data)
+    return buf.getvalue()
+
+def decompress(data, thread=None, blocksize=10**8):
+    """Decompress a gzip compressed string in one shot.
+    Return the decompressed string.
+    """
+    with MulitGzipFile(fileobj=io.BytesIO(data), thread=thread,
+                       blocksize=blocksize) as f:
+        return f.read()
+
 class MulitGzipFile(GzipFile):
     """ docstring of MulitGzipFile """
 
     def __init__(self, filename=None, mode=None,
                  compresslevel=9, fileobj=None, mtime=None,
-                 thread=None, blocksize=5*10**7):
+                 thread=None, blocksize=10**8):
+        """Constructor for the GzipFile class.
 
-        super().__init__(filename=filename, mode=mode, compresslevel=compresslevel,
-                                             fileobj=fileobj, mtime=mtime)
+        At least one of fileobj and filename must be given a
+        non-trivial value.
 
-        self.compresslevel = compresslevel
+        The new class instance is based on fileobj, which can be a regular
+        file, an io.BytesIO object, or any other object which simulates a file.
+        It defaults to None, in which case filename is opened to provide
+        a file object.
+
+        When fileobj is not None, the filename argument is only used to be
+        included in the gzip file header, which may include the original
+        filename of the uncompressed file.  It defaults to the filename of
+        fileobj, if discernible; otherwise, it defaults to the empty string,
+        and in this case the original filename is not included in the header.
+
+        The mode argument can be any of 'r', 'rb', 'a', 'ab', 'w', 'wb', 'x', or
+        'xb' depending on whether the file will be read or written.  The default
+        is the mode of fileobj if discernible; otherwise, the default is 'rb'.
+        A mode of 'r' is equivalent to one of 'rb', and similarly for 'w' and
+        'wb', 'a' and 'ab', and 'x' and 'xb'.
+
+        The compresslevel argument is an integer from 0 to 9 controlling the
+        level of compression; 1 is fastest and produces the least compression,
+        and 9 is slowest and produces the most compression. 0 is no compression
+        at all. The default is 9.
+
+        The mtime argument is an optional numeric timestamp to be written
+        to the last modification time field in the stream when compressing.
+        If omitted or None, the current time is used.
+
+        """
+
         self.thread = thread
-        self.blocksize = blocksize # use 20M blocksize as default
-        if not self.thread:
-            ## thread is None or 0, use all available CPUs
-            self.thread = os.cpu_count()
-        self.pool = Pool(self.thread)
-        self.pool_result = []
-        self.small_buf = BytesIO()
+        if mode and ('t' in mode or 'U' in mode):
+            raise ValueError("Invalid mode: {!r}".format(mode))
+        if mode and 'b' not in mode:
+            mode += 'b'
+        if fileobj is None:
+            fileobj = self.myfileobj = builtins.open(filename, mode or 'rb', blocksize)
+        if filename is None:
+            filename = getattr(fileobj, 'name', '')
+            if not isinstance(filename, (str, bytes)):
+                filename = ''
+        if mode is None:
+            mode = getattr(fileobj, 'mode', 'rb')
 
-        if self.mode == READ:
+        if mode.startswith('r'):
+            self.mode = READ
+            if not self.thread:
+                self.thread = os.cpu_count() // 2 # cores number
+            raw = _MulitGzipReader(fileobj, thread=self.thread, max_block_size=blocksize)
+            self._buffer = io.BufferedReader(raw, blocksize)
+            self.name = filename
             self.index = []
+
+        elif mode.startswith(('w', 'a', 'x')):
+            self.mode = WRITE
+            if not self.thread:
+                # thread is None or 0, use all available CPUs
+                self.thread = os.cpu_count()
+            self._init_write(filename)
+            self.compress = zlib.compressobj(compresslevel,
+                                             zlib.DEFLATED,
+                                             -zlib.MAX_WBITS,
+                                             zlib.DEF_MEM_LEVEL,
+                                             0)
+            self._write_mtime = mtime
+            self.compresslevel = compresslevel
+            self.blocksize = blocksize # use 20M blocksize as default
+            self.pool = Pool(self.thread)
+            self.pool_result = []
+            self.small_buf = io.BytesIO()
+        else:
+            raise ValueError("Invalid mode: {!r}".format(mode))
+
+        self.fileobj = fileobj
 
     def __repr__(self):
         s = repr(self.fileobj)
@@ -104,7 +228,7 @@ class MulitGzipFile(GzipFile):
             self.small_buf.write(data)
             if self.small_buf.tell() >= self.blocksize:
                 self._compress_async(self.small_buf.getbuffer())
-                self.small_buf = BytesIO()
+                self.small_buf = io.BytesIO()
         self._flush_pool()
         return length
 
@@ -114,7 +238,7 @@ class MulitGzipFile(GzipFile):
     def _compress_block_async(self, data):
         if self.small_buf.tell() != 0:
             self._compress_async(data, self.small_buf.getbuffer())
-            self.small_buf = BytesIO()
+            self.small_buf = io.BytesIO()
         else:
             self._compress_async(data)
 
@@ -197,6 +321,34 @@ class MulitGzipFile(GzipFile):
             self.fileobj.write(fname + b'\000')
         return member_size
 
+    def get_index(self):
+        self.index = []
+        raw_pos = self.myfileobj.tell()
+        self.myfileobj.seek(0)
+        while True:
+            self.myfileobj.seek(12, 1)
+            extra_flag = self.myfileobj.read(20)
+            if not extra_flag:
+                break
+            sid, _, msize, rsize = struct.unpack("<2sHQQ", extra_flag)
+            if sid != SID:
+                raise OSError("Invaild Indexed GZIP format")
+            if not self.index:
+                self.index.append((0, msize, rsize))
+            else:
+                self.index.append((self.index[-1][0] + self.index[-1][1], msize, rsize))
+            self.myfileobj.seek(self.index[-1][0] + self.index[-1][1])
+        self.myfileobj.seek(raw_pos)
+        return self.index
+
+    def show_index(self):
+        if not self.index:
+            self.get_index()
+        block_id = 1
+        for e in self.index:
+            print(block_id, *e, sep="\t")
+            block_id += 1
+
     def close(self):
         fileobj = self.fileobj
         if fileobj is None:
@@ -205,7 +357,7 @@ class MulitGzipFile(GzipFile):
             if self.mode == WRITE:
                 if self.small_buf.tell() != 0:
                     self._compress_async(self.small_buf.getbuffer())
-                    self.small_buf = BytesIO()
+                    self.small_buf = io.BytesIO()
                 self._flush_pool(force=True)
             elif self.mode == READ:
                 self._buffer.close()
@@ -220,32 +372,42 @@ class MulitGzipFile(GzipFile):
         self._flush_pool(force=True)
         self.fileobj.flush()
 
-
 class _MulitGzipReader(_GzipReader):
-    def __init__(self, fp):
+    def __init__(self, fp, thread=4, max_block_size=5*10**8):
         super().__init__(fp)
 
-        self.memberidx = []
+        self.memberidx = [] # list of tuple (memberSize, rawTxtSize)
+        self._is_IG_member = False
+        self._header_size = 0
+        self.max_block_size = max_block_size
+        self.thread = thread
+        self._read_pool = []
+        self._pool = Pool(self.thread)
+        self._block_buff = b""
+        self._block_buff_pos = 0
+        self._block_buff_size = 0
+        self._is_eof = False
 
-    def _init_read(self):
-        self._crc = zlib.crc32(b"")
-        self._stream_size = 0  # Decompressed size of unconcatenated stream
+    def _decompress_func(self, data, rsize, rcrc):
+        """
+            Decompress data and return exact bytes of plain text
+            Input:
+                data: compressed data
+                rsize: raw data size calculated by msize and header size
+                rcrc: raw crc32
+            Return:
+                body_bytes: bytes object of decompressed data
+                rsize: raw data size
+                crc: crc32 calculated by decompressed data
+                rcrc: raw crc32 in compressed file
+        """
+        dpr = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
+        body_bytes = dpr.decompress(data, rsize)
+        crc = zlib.crc32(body_bytes)
+        return (body_bytes, rsize, crc, rcrc)
 
-    def _read_exact(self, n):
-        '''Read exactly *n* bytes from `self._fp`
-
-        This method is required because self._fp may be unbuffered,
-        i.e. return short reads.
-        '''
-
-        data = self._fp.read(n)
-        while len(data) < n:
-            b = self._fp.read(n - len(data))
-            if not b:
-                raise EOFError("Compressed file ended before the "
-                               "end-of-stream marker was reached")
-            data += b
-        return data
+    def _decompress_async(self, data, rsize, rcrc):
+        self._read_pool.append(self._pool.apply_async(self._decompress_func, args=(data, rsize, rcrc)))
 
     def _read_gzip_header(self):
         magic = self._fp.read(2)
@@ -266,25 +428,33 @@ class _MulitGzipReader(_GzipReader):
             if sid == SID:
                 _, msize, rsize = struct.unpack("<HQQ" ,self._read_exact(extra_len - 2))
                 self.memberidx.append((msize, rsize))
-                print("block", len(self.memberidx), msize, rsize)
+                self._is_IG_member = True
+                # print("block", len(self.memberidx), msize, rsize)
+                self._header_size = 32 # fixed header + FEXTRA
+            else:
+                self._is_IG_member = False
 
         if flag & FNAME:
             # Read and discard a null-terminated string containing the filename
             while True:
                 s = self._fp.read(1)
+                self._header_size += 1
                 if not s or s==b'\000':
                     break
         if flag & FCOMMENT:
             # Read and discard a null-terminated string containing a comment
             while True:
                 s = self._fp.read(1)
+                self._header_size += 1
                 if not s or s==b'\000':
                     break
         if flag & FHCRC:
             self._read_exact(2)     # Read & discard the 16-bit header CRC
+            self._header_size += 2
         return True
 
     def read(self, size=-1):
+        # print("reading", size)
         if size < 0:
             return self.readall()
         # size=0 is special because decompress(max_length=0) is not supported
@@ -305,17 +475,57 @@ class _MulitGzipReader(_GzipReader):
                 self._decompressor = self._decomp_factory(
                     **self._decomp_args)
 
-            if self._new_member:
+            if self._new_member and self.thread:
                 # If the _new_member flag is set, we have to
                 # jump to the next member, if there is one.
                 self._init_read()
                 if not self._read_gzip_header():
                     self._size = self._pos
-                    return b""
-                self._new_member = False
+                    self._is_eof = True
+                else:
+                    self._new_member = False
+
+                    if self._is_IG_member:
+                        # TODO: figure out why need -8 here
+                        cpr_size = self.memberidx[-1][0] - self._header_size - 8
+                        self._decompress_async(self._fp.read(cpr_size),
+                                               self.memberidx[-1][1],
+                                               self._read_eof_crc())
+                        self.thread -= 1
+                        self._new_member = True
+                        continue
+
+            if self._block_buff_pos + size <= self._block_buff_size:
+                st_pos = self._block_buff_pos
+                self._block_buff_pos += size
+                if self._block_buff_pos >= self._block_buff_size:
+                    self._block_buff_pos = self._block_buff_size
+                return self._block_buff[st_pos:self._block_buff_pos]
+            elif self._read_pool:
+                block_read_rlt = self._read_pool.pop(0).get()
+                self.thread += 1
+                # check decompressed data size
+                if len(block_read_rlt[0]) != block_read_rlt[1]:
+                    raise OSError("Incorrect length of data produced")
+                # check raw crc32 == decompressed crc32
+                if block_read_rlt[2] != block_read_rlt[3]:
+                    raise OSError("CRC check failed {:s} != {:s}".format(
+                        block_read_rlt[3], block_read_rlt[2]
+                    ))
+                self._block_buff = self._block_buff[self._block_buff_pos:] + block_read_rlt[0]
+                self._block_buff_size = len(self._block_buff)
+                self._block_buff_pos = min(size, self._block_buff_size)
+                return self._block_buff[:size] # FIXME: fix issue when size > len(self._block_buff)
+            elif self._block_buff_pos != self._block_buff_size:
+                # still something in self._block_buff
+                st_pos = self._block_buff_pos
+                self._block_buff_pos = self._block_buff_size
+                return self._block_buff[st_pos:]
+            elif self._is_eof:
+                return b""
 
             # Read a chunk of data from the file
-            buf = self._fp.read(4096)
+            buf = self._fp.read(io.DEFAULT_BUFFER_SIZE)
 
             uncompress = self._decompressor.decompress(buf, size)
             if self._decompressor.unconsumed_tail != b"":
@@ -335,21 +545,12 @@ class _MulitGzipReader(_GzipReader):
         self._pos += len(uncompress)
         return uncompress
 
-    def _add_read_data(self, data):
-        self._crc = zlib.crc32(data, self._crc)
-        self._stream_size = self._stream_size + len(data)
-
-    def _read_eof(self):
-        # We've read to the end of the file
-        # We check the that the computed CRC and size of the
-        # uncompressed data matches the stored values.  Note that the size
-        # stored is the true file size mod 2**32.
-        crc32, isize = struct.unpack("<II", self._read_exact(8))
-        if crc32 != self._crc:
-            raise OSError("CRC check failed %s != %s" % (hex(crc32),
-                                                         hex(self._crc)))
-        elif isize != (self._stream_size & 0xffffffff):
-            raise OSError("Incorrect length of data produced")
+    def _read_eof_crc(self):
+        """
+            Get crc32 without checking, ignore uint32 raw size
+            Then consume the padded zeros
+        """
+        crc32, _ = struct.unpack("<II", self._read_exact(8))
 
         # Gzip files can be padded with zeroes and still have archives.
         # Consume all zero bytes and set the file position to the first
@@ -359,7 +560,4 @@ class _MulitGzipReader(_GzipReader):
             c = self._fp.read(1)
         if c:
             self._fp.prepend(c)
-
-    def _rewind(self):
-        super()._rewind()
-        self._new_member = True
+        return crc32

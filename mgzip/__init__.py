@@ -6,18 +6,8 @@ Copyright (c) 2019 Vincent Li
 
 """
 
-import gzip as gzlib
-from .multiProcGzip import MulitGzipFile, _MulitGzipReader, __version__
+from .multiProcGzip import MulitGzipFile, open, compress, decompress, __version__
 
 __all__ = ["GzipFile", "open", "compress", "decompress"]
 
-
-## patch GzipFile with ParallelGzipFile
-gzlib._GzipReader = _MulitGzipReader
-gzlib.GzipFile = MulitGzipFile
-
-## original methods
 GzipFile = MulitGzipFile
-open = gzlib.open
-compress = gzlib.compress
-decompress = gzlib.decompress
