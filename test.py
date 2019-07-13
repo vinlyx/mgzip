@@ -1,5 +1,5 @@
-# import mgzip
-import gzip as mgzip
+import mgzip
+# import gzip as mgzip
 import time
 
 def _test():
