@@ -369,8 +369,10 @@ class MulitGzipFile(GzipFile):
                 myfileobj.close()
 
     def flush(self):
-        self._flush_pool(force=True)
-        self.fileobj.flush()
+        self._check_not_closed()
+        if self.mode == WRITE:
+            self._flush_pool(force=True)
+            self.fileobj.flush()
 
 class _MulitGzipReader(_GzipReader):
     def __init__(self, fp, thread=4, max_block_size=5*10**8):
