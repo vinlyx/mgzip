@@ -16,7 +16,7 @@ from multiprocessing.dummy import Pool
 
 __version__ = "0.1.0"
 
-SID = b'IG' # subfield ID of indexed gzip file
+SID = b'MZ' # subfield ID of indexed gzip file
 
 def open(filename, mode="rb", compresslevel=9,
          encoding=None, errors=None, newline=None,
@@ -300,7 +300,7 @@ class MulitGzipFile(GzipFile):
 
         # write extra flag for indexing
         # XLEN, 20 bytes
-        self.fileobj.write(b'\x14\x00')             # extra flag len, 2 bytes
+        self.fileobj.write(b'\x08\x00')             # extra flag len, 2 bytes
         # EXTRA FLAG FORMAT:
         # +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
         # |SI1|SI2|  LEN  |       MEMBER SIZE (8 Bytes)   |       RAW SIZE (8 Bytes)      |
@@ -311,28 +311,29 @@ class MulitGzipFile(GzipFile):
         # RAW SIZE:      Raw text size in uint64 (since raw size is not able to represent >4GB file)
         self.fileobj.write(SID)                   # subfield ID (IG), 2 bytes
         # LEN: 16 bytes
-        self.fileobj.write(b'\x10\x00')             # subfield len (16), 2 bytes
+        self.fileobj.write(b'\x04\x00')             # subfield len (16), 2 bytes
         # compressed data size: 16 + 8 + 8 + len(fname) + 1 + data + 8
-        member_size = 32 + len(fname) + 1 + compressed_size + 8
+        member_size = 20 + len(fname) + 1 + compressed_size + 8
         if not fname:
             member_size -= 1
-        self.fileobj.write(struct.pack("<Q", member_size)) # member size, 8 bytes
-        # raw data size:
-        self.fileobj.write(struct.pack("<Q", raw_size))    # raw data size, 8 bytes
+        self.fileobj.write(struct.pack("<I", compressed_size)) # member size, 8 bytes
         if fname:
             self.fileobj.write(fname + b'\000')
         return member_size
 
+    '''
     def get_index(self):
         self.index = []
         raw_pos = self.myfileobj.tell()
         self.myfileobj.seek(0)
         while True:
             self.myfileobj.seek(12, 1)
-            extra_flag = self.myfileobj.read(20)
+            extra_flag = self.myfileobj.read(8)
             if not extra_flag:
                 break
-            sid, _, msize, rsize = struct.unpack("<2sHQQ", extra_flag)
+            sid, _, msize = struct.unpack("<2sI", extra_flag)
+            
+            rsize = None
             if sid != SID:
                 raise OSError("Invaild Indexed GZIP format")
             if not self.index:
@@ -350,6 +351,7 @@ class MulitGzipFile(GzipFile):
         for e in self.index:
             print(block_id, *e, sep="\t")
             block_id += 1
+    '''
 
     def close(self):
         fileobj = self.fileobj
@@ -430,11 +432,12 @@ class _MulitGzipReader(_GzipReader):
             # Read & discard the extra field, if present
             extra_len, sid = struct.unpack("<H2s", self._read_exact(4))
             if sid == SID:
-                _, msize, rsize = struct.unpack("<HQQ" ,self._read_exact(extra_len - 2))
+                _, msize = struct.unpack("<HI" ,self._read_exact(extra_len - 2))
+                rsize = None
                 self.memberidx.append((msize, rsize))
                 self._is_IG_member = True
                 # print("block", len(self.memberidx), msize, rsize)
-                self._header_size = 32 # fixed header + FEXTRA
+                self._header_size = 20 # fixed header + FEXTRA
             else:
                 self._is_IG_member = False
 
@@ -491,10 +494,9 @@ class _MulitGzipReader(_GzipReader):
 
                     if self._is_IG_member:
                         # TODO: figure out why need -8 here
-                        cpr_size = self.memberidx[-1][0] - self._header_size - 8
+                        cpr_size = self.memberidx[-1][0] #- self._header_size - 8
                         self._decompress_async(self._fp.read(cpr_size),
-                                               self.memberidx[-1][1],
-                                               self._read_eof_crc())
+                                               *self._read_eof_crc())
                         self.thread -= 1
                         self._new_member = True
                         continue
@@ -554,7 +556,7 @@ class _MulitGzipReader(_GzipReader):
             Get crc32 without checking, ignore uint32 raw size
             Then consume the padded zeros
         """
-        crc32, _ = struct.unpack("<II", self._read_exact(8))
+        crc32, rsize = struct.unpack("<II", self._read_exact(8))
 
         # Gzip files can be padded with zeroes and still have archives.
         # Consume all zero bytes and set the file position to the first
@@ -564,4 +566,4 @@ class _MulitGzipReader(_GzipReader):
             c = self._fp.read(1)
         if c:
             self._fp.prepend(c)
-        return crc32
+        return (rsize, crc32)
