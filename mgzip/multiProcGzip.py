@@ -314,6 +314,8 @@ class MulitGzipFile(GzipFile):
         self.fileobj.write(b'\x10\x00')             # subfield len (16), 2 bytes
         # compressed data size: 16 + 8 + 8 + len(fname) + 1 + data + 8
         member_size = 32 + len(fname) + 1 + compressed_size + 8
+        if not fname:
+            member_size -= 1
         self.fileobj.write(struct.pack("<Q", member_size)) # member size, 8 bytes
         # raw data size:
         self.fileobj.write(struct.pack("<Q", raw_size))    # raw data size, 8 bytes
