@@ -5,7 +5,7 @@ with open('README.md') as fh:
 
 setup(
     name='mgzip',
-    version='0.1.0',
+    version='0.2.0',
     author='Vincent Li',
     author_email='vincentliyx@gmail.com',
 
