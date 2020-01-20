@@ -81,6 +81,19 @@ def decompress(data, thread=None, blocksize=10**8):
                        blocksize=blocksize) as f:
         return f.read()
 
+def padded_file_seek(self, off, whence=0):
+    """
+        Provide a whence of seek method in gzip
+        to allow seek to the end of file.
+        * FIXME: This method may have some problem
+         is stream mode since it is unable to seek
+         to the end of stream object.
+    """
+    self._read = None
+    self._buffer = None
+    return self.file.seek(off, whence)
+_PaddedFile.seek = padded_file_seek # override the seek method to provide whence parameter
+
 class MulitGzipFile(GzipFile):
     """ docstring of MulitGzipFile """
 
@@ -121,6 +134,7 @@ class MulitGzipFile(GzipFile):
         """
 
         self.thread = thread
+        self.read_blocks = None
         if mode and ('t' in mode or 'U' in mode):
             raise ValueError("Invalid mode: {!r}".format(mode))
         if mode and 'b' not in mode:
@@ -138,8 +152,8 @@ class MulitGzipFile(GzipFile):
             self.mode = READ
             if not self.thread:
                 self.thread = os.cpu_count() // 2 # cores number
-            raw = _MulitGzipReader(fileobj, thread=self.thread, max_block_size=blocksize)
-            self._buffer = io.BufferedReader(raw, blocksize)
+            self.raw = _MulitGzipReader(fileobj, thread=self.thread, max_block_size=blocksize)
+            self._buffer = io.BufferedReader(self.raw, blocksize)
             self.name = filename
             self.index = []
 
@@ -322,21 +336,47 @@ class MulitGzipFile(GzipFile):
         return member_size
 
     def get_index(self):
+        """
+            Index Format:
+                0: Start offset
+                1: Block size
+                2: Raw size
+                3: Comment (If exists)
+        """
+        if self.mode != READ:
+            raise OSError("READ mode is required for get_index.")
         self.index = []
         raw_pos = self.myfileobj.tell()
         self.myfileobj.seek(0)
         while True:
-            self.myfileobj.seek(12, 1)
+            commentByte = b""
+            self.myfileobj.seek(3, 1)
+            fByte = self.myfileobj.read(1)
+            if not fByte:
+                break
+            flag, = struct.unpack("<B", fByte)
+            self.myfileobj.seek(8, 1)
             extra_flag = self.myfileobj.read(8)
             if not extra_flag:
                 break
             sid, _, msize = struct.unpack("<2sHI", extra_flag)
             if sid != SID:
                 raise OSError("Invaild Indexed GZIP format")
+            if flag & FNAME:
+                while True:
+                    s = self.myfileobj.read(1)
+                    if not s or s==b'\000':
+                        break
+            if flag & FCOMMENT:
+                while True:
+                    s = self.myfileobj.read(1)
+                    if not s or s==b'\000':
+                        break
+                    commentByte += s
             if not self.index:
-                self.index.append([0, msize, 0])
+                self.index.append([0, msize, 0, commentByte.decode()])
             else:
-                self.index.append([self.index[-1][0] + self.index[-1][1], msize, 0])
+                self.index.append([self.index[-1][0] + self.index[-1][1], msize, 0, commentByte.decode()])
             self.myfileobj.seek(self.index[-1][0] + self.index[-1][1] - 4)
             isize, = struct.unpack("<I", self.myfileobj.read(4))
             self.index[-1][2] = isize
@@ -346,10 +386,53 @@ class MulitGzipFile(GzipFile):
     def show_index(self):
         if not self.index:
             self.get_index()
-        block_id = 1
+        block_id = 0
+        print("#ID\tStart\tBlockSize\tRawSize\tComment")
         for e in self.index:
             print(block_id, *e, sep="\t")
             block_id += 1
+
+    def build_index(self, idx_file=None):
+        if not idx_file:
+            idx_file = self.name + ".idx"
+        if not self.index:
+            self.get_index()
+        block_id = 0
+        with builtins.open(idx_file, 'w') as fh:
+            print("#ID\tStart\tBlockSize\tRawSize\tComment", file=fh)
+            for e in self.index:
+                if not e[2]:
+                    continue
+                print(block_id, *e, sep="\t", file=fh)
+                block_id += 1
+        return self.index
+
+    def load_index(self, idx_file):
+        self.index = []
+        with builtins.open(idx_file, 'r') as fh:
+            for line in fh:
+                info = line.split()
+                if not info or info[0].startswith('#'):
+                    continue
+                self.index.append([int(info[1]), int(info[2]), int(info[3]), info[4]])
+        return self.index
+
+    def set_read_blocks(self, block_ids):
+        self.raw.set_block_iter([self.index[x][0] for x in block_ids])
+
+    def set_read_blocks_by_name(self, block_names):
+        """
+            If file use comment to record the name of blocks,
+            set read blocks to given list of block name.
+
+            * The order of reading will follow the block
+              order in compressed file instead of input block_names
+        """
+        block_name_set = set(block_names)
+        self.raw.set_block_iter([x[0] for x in self.index if x[3] in block_name_set])
+
+    def clear_read_blocks(self):
+        self.raw.clear_block_iter()
 
     def close(self):
         fileobj = self.fileobj
@@ -391,6 +474,8 @@ class _MulitGzipReader(_GzipReader):
         self._block_buff_pos = 0
         self._block_buff_size = 0
         self._is_eof = False
+        self._raw_fp = fp
+        self.block_start_iter = None
 
     def _decompress_func(self, data, rcrc, rsize):
         """
@@ -463,7 +548,6 @@ class _MulitGzipReader(_GzipReader):
         return True
 
     def read(self, size=-1):
-        # print("reading", size)
         if size < 0:
             return self.readall()
         # size=0 is special because decompress(max_length=0) is not supported
@@ -474,6 +558,14 @@ class _MulitGzipReader(_GzipReader):
         # call to decompress() may not return
         # any data. In this case, retry until we get some data or reach EOF.
         while True:
+            if self.block_start_iter:
+                try:
+                    tmp = next(self.block_start_iter)
+                    self._fp.seek(tmp)
+                except Exception:
+                    self.clear_block_iter()
+                    self._fp.seek(0, 2)
+                    continue
             if self._decompressor.eof:
                 # Ending case: we've come to the end of a member in the file,
                 # so finish up this member, and read a new gzip header.
@@ -568,3 +660,9 @@ class _MulitGzipReader(_GzipReader):
         if c:
             self._fp.prepend(c)
         return (crc32, isize)
+
+    def set_block_iter(self, block_start_list):
+        self.block_start_iter = iter(block_start_list)
+
+    def clear_block_iter(self):
+        self.block_start_iter = None
