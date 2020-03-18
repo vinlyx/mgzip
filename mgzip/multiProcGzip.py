@@ -14,7 +14,7 @@ import io
 from gzip import GzipFile, write32u, _GzipReader, _PaddedFile, READ, WRITE, FEXTRA, FNAME, FCOMMENT, FHCRC
 from multiprocessing.dummy import Pool
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 SID = b'IG' # Subfield ID of indexed gzip file
 
@@ -52,9 +52,9 @@ def open(filename, mode="rb", compresslevel=9,
 
     gz_mode = mode.replace("t", "")
     if isinstance(filename, (str, bytes)):
-        binary_file = MulitGzipFile(filename, gz_mode, compresslevel, thread=thread, blocksize=blocksize)
+        binary_file = MultiGzipFile(filename, gz_mode, compresslevel, thread=thread, blocksize=blocksize)
     elif hasattr(filename, "read") or hasattr(filename, "write"):
-        binary_file = MulitGzipFile(None, gz_mode, compresslevel, filename, thread=thread, blocksize=blocksize)
+        binary_file = MultiGzipFile(None, gz_mode, compresslevel, filename, thread=thread, blocksize=blocksize)
     else:
         raise TypeError("filename must be a str or bytes object, or a file")
 
@@ -68,7 +68,7 @@ def compress(data, compresslevel=9, thread=None, blocksize=10**8):
     Optional argument is the compression level, in range of 0-9.
     """
     buf = io.BytesIO()
-    with MulitGzipFile(fileobj=buf, mode='wb', compresslevel=compresslevel,
+    with MultiGzipFile(fileobj=buf, mode='wb', compresslevel=compresslevel,
                        thread=thread, blocksize=blocksize) as f:
         f.write(data)
     return buf.getvalue()
@@ -77,7 +77,7 @@ def decompress(data, thread=None, blocksize=10**8):
     """Decompress a gzip compressed string in one shot.
     Return the decompressed string.
     """
-    with MulitGzipFile(fileobj=io.BytesIO(data), thread=thread,
+    with MultiGzipFile(fileobj=io.BytesIO(data), thread=thread,
                        blocksize=blocksize) as f:
         return f.read()
 
@@ -94,8 +94,8 @@ def padded_file_seek(self, off, whence=0):
     return self.file.seek(off, whence)
 _PaddedFile.seek = padded_file_seek # override the seek method to provide whence parameter
 
-class MulitGzipFile(GzipFile):
-    """ docstring of MulitGzipFile """
+class MultiGzipFile(GzipFile):
+    """ docstring of MultiGzipFile """
 
     def __init__(self, filename=None, mode=None,
                  compresslevel=9, fileobj=None, mtime=None,
@@ -558,10 +558,9 @@ class _MulitGzipReader(_GzipReader):
         # call to decompress() may not return
         # any data. In this case, retry until we get some data or reach EOF.
         while True:
-            if self.block_start_iter:
+            if self.block_start_iter and self.thread:
                 try:
-                    tmp = next(self.block_start_iter)
-                    self._fp.seek(tmp)
+                    self._fp.seek(next(self.block_start_iter))
                 except Exception:
                     self.clear_block_iter()
                     self._fp.seek(0, 2)
