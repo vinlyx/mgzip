@@ -1,11 +1,12 @@
 from setuptools import setup, find_packages
+from mgzip import __version__
 
 with open('README.md') as fh:
     longDesc = fh.read().replace("CompressionBenchmark.png", "https://raw.githubusercontent.com/vinlyx/mgzip/master/CompressionBenchmark.png").replace("DecompressionBenchmark.png", "https://raw.githubusercontent.com/vinlyx/mgzip/master/DecompressionBenchmark.png")
 
 setup(
     name='mgzip',
-    version='0.2.0',
+    version=__version__,
     author='Vincent Li',
     author_email='vincentliyx@gmail.com',
 
