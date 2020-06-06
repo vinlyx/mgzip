@@ -16,7 +16,7 @@ from multiprocessing.dummy import Pool
 
 __version__ = "0.2.1"
 
-SID = b'IG' # Subfield ID of indexed gzip file
+SID = b'MZ' # Subfield ID of indexed gzip file
 
 def open(filename, mode="rb", compresslevel=9,
          encoding=None, errors=None, newline=None,
@@ -330,7 +330,7 @@ class MultiGzipFile(GzipFile):
         member_size = 20 + len(fname) + 1 + compressed_size + 8
         if not fname:
             member_size -= 1
-        self.fileobj.write(struct.pack("<I", member_size)) # member size, 4 bytes
+        self.fileobj.write(struct.pack("<I", compressed_size)) # member size, 4 bytes
         if fname:
             self.fileobj.write(fname + b'\000')
         return member_size
@@ -587,7 +587,7 @@ class _MulitGzipReader(_GzipReader):
 
                     if self._is_IG_member:
                         # 8 bytes for crc32 and isize
-                        cpr_size = self.memberidx[-1] - self._header_size - 8
+                        cpr_size = self.memberidx[-1]
                         self._decompress_async(self._fp.read(cpr_size),
                                                *self._read_eof_crc())
                         self.thread -= 1
