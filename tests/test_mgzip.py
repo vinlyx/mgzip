@@ -39,3 +39,15 @@ def test_read_rb(tmpdir):
     assert file_content == DATA1 * 500
 
 
+def test_pool_close(tmpdir):
+    
+    s = b"1234567890" * 1000
+    filename = os.path.join(tmpdir, "test.gz")
+    fh = mgzip.open(filename, 'wb', compresslevel=6, thread=4, blocksize=128)
+    fh.write(s)
+    assert repr(fh.pool) == "<multiprocessing.pool.ThreadPool state=RUN pool_size=4>"
+    fh.close()
+    assert fh.fileobj is None
+    assert fh.myfileobj is None
+    assert fh.pool_result == []
+    assert repr(fh.pool) == "<multiprocessing.pool.ThreadPool state=CLOSE pool_size=4>"
