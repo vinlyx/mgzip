@@ -151,7 +151,8 @@ class MultiGzipFile(GzipFile):
         if mode.startswith('r'):
             self.mode = READ
             if not self.thread:
-                self.thread = os.cpu_count() // 2 # cores number
+                # use half of total CPUs
+                self.thread = os.cpu_count() // 2 or 1 if os.cpu_count() else 1
             self.raw = _MulitGzipReader(fileobj, thread=self.thread, max_block_size=blocksize)
             self._buffer = io.BufferedReader(self.raw, blocksize)
             self.name = filename
@@ -161,7 +162,7 @@ class MultiGzipFile(GzipFile):
             self.mode = WRITE
             if not self.thread:
                 # thread is None or 0, use all available CPUs
-                self.thread = os.cpu_count()
+                self.thread = os.cpu_count() or 1
             self._init_write(filename)
             self.compress = zlib.compressobj(compresslevel,
                                              zlib.DEFLATED,
