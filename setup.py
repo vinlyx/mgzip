@@ -7,13 +7,13 @@ with open('README.md') as fh:
 setup(
     name='mgzip',
     version=__version__,
-    author='Vincent Li',
-    author_email='vincentliyx@gmail.com',
+    author='Craig Milo Rogers',
+    author_email='CraigMiloRogers@gmail.com',
 
-    description='A multi-threading implementation of Python gzip module',
+    description='A multi-threading implementation of Python gzip module, based on the work of Vincent Li.',
     long_description=longDesc,
     long_description_content_type="text/markdown",
-    url='https://github.com/vinlyx/mgzip',
+    url='https://github.com/usc-isi-i2/mgzip',
     license='MIT',
     packages=find_packages(),
     classifiers=[
