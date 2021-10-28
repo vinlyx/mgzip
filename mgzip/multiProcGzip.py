@@ -444,6 +444,7 @@ class MultiGzipFile(GzipFile):
                     self._compress_async(self.small_buf.getbuffer())
                     self.small_buf = io.BytesIO()
                 self._flush_pool(force=True)
+                self.pool.close()
             elif self.mode == READ:
                 self._buffer.close()
         finally:
