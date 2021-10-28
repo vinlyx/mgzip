@@ -14,7 +14,7 @@ import io
 from gzip import GzipFile, write32u, _GzipReader, _PaddedFile, READ, WRITE, FEXTRA, FNAME, FCOMMENT, FHCRC
 from multiprocessing.dummy import Pool
 
-__version__ = "0.2.1.2"
+__version__ = "0.2.1.3"
 
 SID = b'IG' # Subfield ID of indexed gzip file
 
