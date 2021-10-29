@@ -5,7 +5,7 @@ with open('README.md') as fh:
     longDesc = fh.read().replace("CompressionBenchmark.png", "https://raw.githubusercontent.com/vinlyx/mgzip/master/CompressionBenchmark.png").replace("DecompressionBenchmark.png", "https://raw.githubusercontent.com/vinlyx/mgzip/master/DecompressionBenchmark.png")
 
 setup(
-    name='mgzip',
+    name='usc-isi-i2-mgzip',
     version=__version__,
     author='Craig Milo Rogers',
     author_email='CraigMiloRogers@gmail.com',
