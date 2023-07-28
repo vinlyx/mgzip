@@ -477,6 +477,23 @@ class _MulitGzipReader(_GzipReader):
         self._raw_fp = fp
         self.block_start_iter = None
 
+         # Directly include _read_exact as it has been removed in _GzipReader with Python > 3.1
+    def _read_exact(self, n):
+        '''Read exactly *n* bytes from `self._fp`
+
+        This method is required because self._fp may be unbuffered,
+        i.e. return short reads.
+        '''
+
+        data = self._fp.read(n)
+        while len(data) < n:
+            b = self._fp.read(n - len(data))
+            if not b:
+                raise EOFError("Compressed file ended before the "
+                            "end-of-stream marker was reached")
+            data += b
+        return data
+             
     def _decompress_func(self, data, rcrc, rsize):
         """
             Decompress data and return exact bytes of plain text
