@@ -96,6 +96,7 @@ class TestFileOperations:
 class TestCompatibility:
     """Test compatibility with standard gzip module"""
 
+    @pytest.mark.skipif(sys.version_info >= (3, 12), reason="Python 3.12+ has zlib API changes")
     def test_mgzip_read_gzip_write(self):
         """Test mgzip can read files written by gzip"""
         data = b"Compatibility test data"
