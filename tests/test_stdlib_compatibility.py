@@ -1,7 +1,6 @@
 """Test mgzip compatibility with stdlib gzip using adapted stdlib tests."""
 
 import array
-import pytest
 import gzip
 import io
 import os
@@ -9,6 +8,7 @@ import sys
 import tempfile
 
 import mgzip
+import pytest
 
 
 # Test data from stdlib
@@ -173,9 +173,10 @@ class TestMgzipStdlibCompatibility(BaseTest):
             f.writelines(lines)
         
         with gzip.open(self.filename, 'rb') as f:
-        # Text mode has compatibility issues with Python 3.12+
+            assert f.read() == b"Line 1\nLine 2\nLine 3\n"
 
-    @pytest.mark.skipif(sys.version_info >= (3, 12), reason="Python 3.12+ text mode compatibility issues")
+    @pytest.mark.skipif(sys.version_info >= (3, 12),
+                        reason="Python 3.12+ text mode issues")
     def test_text_mode_write_read(self):
         """Test text mode write and read."""
         text_data = "Hello, 世界!\nMultiple lines\n"
