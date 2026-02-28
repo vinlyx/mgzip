@@ -671,9 +671,13 @@ class _MulitGzipReader(_GzipReader):
         In Python 3.12+, _GzipReader no longer has this method.
         We add it for backward compatibility.
         """
-        # For Python 3.12+, we don't need to do anything special
-        # The data is already handled by the read() method
-        pass
+        import sys
+        if sys.version_info >= (3, 12):
+            # Python 3.12+: no-op, data already handled
+            pass
+        else:
+            # Python 3.11 and earlier: call parent method
+            super()._add_read_data(data)
 
     def _read_eof_crc(self):
         """
