@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mgzip"
+dynamic = ["version"]
+description = "A multi-threading implementation of Python gzip module"
+readme = "README.md"
+license = { text = "MIT License" }
+authors = [
+    { name = "Vincent Li", email = "vincentliyx@gmail.com" }
+]
+maintainers = [
+    { name = "Vincent Li", email = "vincentliyx@gmail.com" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Intended Audience :: Developers",
+]
+requires-python = ">=3.8"
+
+[project.urls]
+Homepage = "https://github.com/vinlyx/mgzip"
+Repository = "https://github.com/vinlyx/mgzip"
+Issues = "https://github.com/vinlyx/mgzip/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "mgzip.multiProcGzip.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["mgzip*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["mgzip"]
+
+[tool.black]
+line-length = 88
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
