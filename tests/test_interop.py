@@ -1,6 +1,7 @@
 """Interoperability tests with stdlib gzip."""
 
 import gzip
+import io
 import os
 import sys
 import tempfile
@@ -57,8 +58,7 @@ class TestMgzipGzipCompatibility:
     def test_text_mode(self):
         """Test text mode compatibility."""
         text_data = "Hello, 世界!\nMultiple lines\nWith unicode"
-    @pytest.mark.skipif(sys.version_info >= (3, 12),
-                        reason="Python 3.12+ text mode")
+        
         with tempfile.NamedTemporaryFile(suffix='.gz', delete=False, mode='w') as f:
             fname = f.name
         
