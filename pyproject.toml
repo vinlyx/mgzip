@@ -37,6 +37,9 @@ Homepage = "https://github.com/vinlyx/mgzip"
 Repository = "https://github.com/vinlyx/mgzip"
 Issues = "https://github.com/vinlyx/mgzip/issues"
 
+[project.scripts]
+mgzip = "mgzip.__main__:main"
+
 [tool.setuptools.dynamic]
 version = { attr = "mgzip.multiProcGzip.__version__" }
 
@@ -58,3 +61,11 @@ target-version = ["py38", "py39", "py310", "py311", "py312", "py313", "py314"]
 [tool.isort]
 profile = "black"
 line_length = 88
+
+[tool.bandit]
+targets = ["mgzip"]
+skips = ["B101"]
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
