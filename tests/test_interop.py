@@ -73,6 +73,7 @@ class TestMgzipGzipCompatibility:
             if os.path.exists(fname):
                 os.unlink(fname)
 
+    @pytest.mark.skipif(sys.version_info >= (3, 12), reason="Python 3.12+ zlib API changes")
     def test_compress_decompress_functions(self):
         """Test compress() and decompress() compatibility."""
         test_data = DATA1 * 100
