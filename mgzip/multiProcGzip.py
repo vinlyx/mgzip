@@ -16,7 +16,7 @@ from multiprocessing.dummy import Pool
 
 __version__ = "0.2.4"
 
-SID = b'MZ' # Subfield ID of indexed gzip file
+SID = b'MZ'   # Subfield ID of indexed gzip file
 
 def open(filename, mode="rb", compresslevel=9,
          encoding=None, errors=None, newline=None,
@@ -63,6 +63,7 @@ def open(filename, mode="rb", compresslevel=9,
     else:
         return binary_file
 
+
 def compress(data, compresslevel=9, thread=None, blocksize=10**8):
     """Compress data in one shot and return the compressed string.
     Optional argument is the compression level, in range of 0-9.
@@ -92,7 +93,7 @@ def padded_file_seek(self, off, whence=0):
     self._read = None
     self._buffer = None
     return self.file.seek(off, whence)
-_PaddedFile.seek = padded_file_seek # override the seek method to provide whence parameter
+_PaddedFile.seek = padded_file_seek   # override the seek method to provide whence parameter
 
 class MultiGzipFile(GzipFile):
     """ docstring of MultiGzipFile """
