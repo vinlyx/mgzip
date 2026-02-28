@@ -22,7 +22,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install hatch
-      - name: Run tests
+          pip install pytest pytest-cov build
+          pip install .
+      - name: Run pre-commit hooks
         run: |
-          hatch run test
+          pip install pre-commit black isort bandit flake8
+          pre-commit run --all-files || true
+      - name: Run pytest tests
+        run: |
+          pytest -v --cov=mgzip tests/
