@@ -8,6 +8,7 @@ dynamic = ["version"]
 description = "A multi-threading implementation of Python gzip module"
 readme = "README.md"
 license = { text = "MIT License" }
+requires-python = ">=3.8"
 authors = [
     { name = "Vincent Li", email = "vincentliyx@gmail.com" }
 ]
@@ -28,7 +29,6 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Intended Audience :: Developers",
 ]
-requires-python = ">=3.8"
 
 [project.urls]
 Homepage = "https://github.com/vinlyx/mgzip"
