@@ -41,7 +41,8 @@ def main():
     )
     parser.add_argument(
         "-o", "--output",
-        help="Output file or '-' for stdout (Default: Input file with 'gz' extension or stdout)"
+        help="Output file or '-' for stdout "
+             "(Default: Input file with 'gz' extension or stdout)"
     )
     parser.add_argument(
         "-f", "--filename",
@@ -64,7 +65,8 @@ def main():
     parser.add_argument(
         "-t", "--threads",
         type=int,
-        help="Number of threads to use (Default: Determine automatically)"
+        help="Number of threads to use "
+             "(Default: Determine automatically)"
     )
     parser.add_argument(
         "-b", "--blocksize",

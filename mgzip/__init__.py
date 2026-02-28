@@ -6,7 +6,9 @@ Copyright (c) 2019 Vincent Li
 
 """
 
-from .multiProcGzip import MultiGzipFile, open, compress, decompress, __version__
+from .multiProcGzip import (
+    MultiGzipFile, open, compress, decompress, __version__
+)
 
 __all__ = ["GzipFile", "open", "compress", "decompress"]
 
