@@ -508,11 +508,18 @@ class _MulitGzipReader(_GzipReader):
                 crc: crc32 calculated by decompressed data
                 rcrc: raw crc32 in compressed file
         """
-        dpr = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
+        import sys
+        # Python 3.12+ uses _ZlibDecompressor instead of decompressobj
+        if sys.version_info >= (3, 12):
+            dpr = zlib._ZlibDecompressor(wbits=-zlib.MAX_WBITS)
+        else:
+            dpr = zlib.decompressobj(wbits=-zlib.MAX_WBITS)
+        
         ## FIXME: case when raw data size > 4 GB, rsize is just the mod of 4G
         ## not a good idea to read all of them in memory
         body_bytes = dpr.decompress(data, rsize)
         crc = zlib.crc32(body_bytes)
+        # Handle both old and new API
         tail = getattr(dpr, "unconsumed_tail", dpr.unused_data)
         if tail != b"":
             body_bytes += tail
