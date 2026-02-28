@@ -1,6 +1,5 @@
 """Test mgzip compatibility with stdlib gzip using adapted stdlib tests."""
 
-import array
 import gzip
 import io
 import os

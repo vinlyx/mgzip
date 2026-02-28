@@ -53,7 +53,8 @@ class TestMgzipGzipCompatibility:
             if os.path.exists(fname):
                 os.unlink(fname)
 
-    @pytest.mark.skipif(sys.version_info >= (3, 12), reason="Python 3.12+ text mode compatibility issues")
+    @pytest.mark.skipif(sys.version_info >= (3, 12),
+                        reason="Python 3.12+ text mode compatibility")
     def test_text_mode(self):
         """Test text mode compatibility."""
         text_data = "Hello, 世界!\nMultiple lines\nWith unicode"
@@ -73,7 +74,8 @@ class TestMgzipGzipCompatibility:
             if os.path.exists(fname):
                 os.unlink(fname)
 
-    @pytest.mark.skipif(sys.version_info >= (3, 12), reason="Python 3.12+ zlib API changes")
+    @pytest.mark.skipif(sys.version_info >= (3, 12),
+                        reason="Python 3.12+ zlib API changes")
     def test_compress_decompress_functions(self):
         """Test compress() and decompress() compatibility."""
         test_data = DATA1 * 100
