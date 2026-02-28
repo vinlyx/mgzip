@@ -664,6 +664,17 @@ class _MulitGzipReader(_GzipReader):
         self._pos += len(uncompress)
         return uncompress
 
+
+    def _add_read_data(self, data):
+        """Add data to internal buffer (Python 3.12+ compatibility).
+        
+        In Python 3.12+, _GzipReader no longer has this method.
+        We add it for backward compatibility.
+        """
+        # For Python 3.12+, we don't need to do anything special
+        # The data is already handled by the read() method
+        pass
+
     def _read_eof_crc(self):
         """
             Get crc32 and isize without checking
