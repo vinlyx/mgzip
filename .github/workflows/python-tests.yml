@@ -23,11 +23,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-cov setuptools wheel
-          # Install package (not editable mode to avoid import issues)
           python setup.py install
-      - name: Run tests
+      - name: Run pytest tests
         run: |
           pytest -v --cov=mgzip tests/
-      - name: Run legacy test.py
+      - name: Test compression/decompression
         run: |
-          python test.py
+          python -c "
+import mgzip
+data = b'Hello, World! ' * 1000
+compressed = mgzip.compress(data)
+decompressed = mgzip.decompress(compressed)
+assert decompressed == data, 'Compression/decompression failed'
+print('✅ Basic compression test passed')
+"
