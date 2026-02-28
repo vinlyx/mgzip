@@ -2,11 +2,6 @@
 
 import gzip
 import os
-import subprocess
-import sys
-import tempfile
-
-import pytest
 
 import mgzip
 
@@ -21,7 +16,7 @@ class TestCLI:
             input_file = f.name
         
         output_file = input_file + ".gz"
-        
+        # Test: python -m mgzip < input > output.gz
         try:
             # Test: python -m mgzip < input > output.gz
             with open(input_file, 'rb') as fin:
@@ -47,7 +42,7 @@ class TestCLI:
             f.write(mgzip.compress(b"Test data " * 50))
             input_file = f.name
         
-        output_file = input_file[:-3]  # Remove .gz
+        # Test: python -m mgzip < input > output.gz
         
         try:
             # Decompress
@@ -70,7 +65,6 @@ class TestCLI:
         import io
         
         # Simulate stdin input
-        input_data = b"Standard input test"
         
         # Compress via mgzip
         compressed = mgzip.compress(input_data)
