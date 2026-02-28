@@ -513,9 +513,10 @@ class _MulitGzipReader(_GzipReader):
         ## not a good idea to read all of them in memory
         body_bytes = dpr.decompress(data, rsize)
         crc = zlib.crc32(body_bytes)
-        if dpr.unconsumed_tail != b"":
-            body_bytes += dpr.unconsumed_tail
-            crc = zlib.crc32(dpr.unconsumed_tail, crc)
+        tail = getattr(dpr, "unconsumed_tail", dpr.unused_data)
+        if tail != b"":
+            body_bytes += tail
+            crc = zlib.crc32(tail, crc)
         return (body_bytes, rsize, crc, rcrc)
 
     def _decompress_async(self, data, rcrc, rsize):
@@ -645,8 +646,9 @@ class _MulitGzipReader(_GzipReader):
             buf = self._fp.read(io.DEFAULT_BUFFER_SIZE)
 
             uncompress = self._decompressor.decompress(buf, size)
-            if self._decompressor.unconsumed_tail != b"":
-                self._fp.prepend(self._decompressor.unconsumed_tail)
+            tail = getattr(self._decompressor, "unconsumed_tail", self._decompressor.unused_data)
+            if tail != b"":
+                self._fp.prepend(tail)
             elif self._decompressor.unused_data != b"":
                 # Prepend the already read bytes to the fileobj so they can
                 # be seen by _read_eof() and _read_gzip_header()
