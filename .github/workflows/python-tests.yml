@@ -29,11 +29,4 @@ jobs:
           pytest -v --cov=mgzip tests/
       - name: Test compression/decompression
         run: |
-          python -c "
-import mgzip
-data = b'Hello, World! ' * 1000
-compressed = mgzip.compress(data)
-decompressed = mgzip.decompress(compressed)
-assert decompressed == data, 'Compression/decompression failed'
-print('✅ Basic compression test passed')
-"
+          python -c "import mgzip; data = b'Hello' * 1000; assert mgzip.decompress(mgzip.compress(data)) == data; print('OK')"
