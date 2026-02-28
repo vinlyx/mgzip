@@ -110,30 +110,29 @@ def main():
             args.filename = Path(args.output).name
 
     try:
-        with (
-            smart_open(args.input, "rb") as in_fh,
-            smart_open(args.output, "wb") as out_fh,
-        ):
-            if args.decompress:
-                with MultiGzipFile(
-                    mode="rb",
-                    compresslevel=args.compression_level,
-                    fileobj=in_fh,
-                    thread=args.threads,
-                ) as mgzip_fh:
-                    copyfileobj(mgzip_fh, out_fh)
-                    out_fh.flush()
-            else:
-                with MultiGzipFile(
-                    filename=args.filename,
-                    mode="wb",
-                    compresslevel=args.compression_level,
-                    fileobj=out_fh,
-                    thread=args.threads,
-                    blocksize=args.blocksize,
-                ) as mgzip_fh:
-                    copyfileobj(in_fh, mgzip_fh)
-                    mgzip_fh.flush()
+        # Use nested context managers for Python 3.8 compatibility
+        with smart_open(args.input, "rb") as in_fh:
+            with smart_open(args.output, "wb") as out_fh:
+                if args.decompress:
+                    with MultiGzipFile(
+                        mode="rb",
+                        compresslevel=args.compression_level,
+                        fileobj=in_fh,
+                        thread=args.threads,
+                    ) as mgzip_fh:
+                        copyfileobj(mgzip_fh, out_fh)
+                        out_fh.flush()
+                else:
+                    with MultiGzipFile(
+                        filename=args.filename,
+                        mode="wb",
+                        compresslevel=args.compression_level,
+                        fileobj=out_fh,
+                        thread=args.threads,
+                        blocksize=args.blocksize,
+                    ) as mgzip_fh:
+                        copyfileobj(in_fh, mgzip_fh)
+                        mgzip_fh.flush()
     except Exception:
         exc_info = sys.exc_info()
         if exc_info[1]:
