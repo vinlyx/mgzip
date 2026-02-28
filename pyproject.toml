@@ -1,19 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
+license = { text = "MIT License" }
 name = "mgzip"
-dynamic = ["version"]
+requires-python = ">=3.8"
 description = "A multi-threading implementation of Python gzip module"
 readme = "README.md"
-license = { text = "MIT License" }
-requires-python = ">=3.8"
 authors = [
-    { name = "Vincent Li", email = "vincentliyx@gmail.com" }
+    { name = "Vincent Li", email = "vincentliyx@gmail.com" },
 ]
 maintainers = [
-    { name = "Vincent Li", email = "vincentliyx@gmail.com" }
+    { name = "Vincent Li", email = "vincentliyx@gmail.com" },
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -31,41 +30,68 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Intended Audience :: Developers",
 ]
+dynamic = ["version"]
+
+[tool.hatch.version]
+path = "mgzip/multiProcGzip.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mgzip"]
 
 [project.urls]
 Homepage = "https://github.com/vinlyx/mgzip"
-Repository = "https://github.com/vinlyx/mgzip"
-Issues = "https://github.com/vinlyx/mgzip/issues"
 
 [project.scripts]
 mgzip = "mgzip.__main__:main"
 
-[tool.setuptools.dynamic]
-version = { attr = "mgzip.multiProcGzip.__version__" }
+[tool.hatch.envs.default]
+installer = "uv"
+dependencies = ["pytest", "pytest-cov", "pytest-xdist"]
 
-[tool.setuptools.packages.find]
-include = ["mgzip*"]
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+cov = "pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=mgzip --cov=tests {args:tests}"
+release = [
+  "hatch run all:test",
+  "hatch build",
+]
 
-[tool.pytest.ini_options]
-pythonpath = ["."]
-testpaths = ["tests"]
-addopts = "-v --tb=short"
+[tool.hatch.envs.lint]
+installer = "uv"
+detached = true
+dependencies = ["black", "isort", "bandit", "pre-commit", "pre-commit-hooks"]
 
-[tool.coverage.run]
-source = ["mgzip"]
+[tool.hatch.envs.lint.scripts]
+check = ["black --check --diff {args:.}", "isort --check-only --diff {args:.}"]
+fix = ["black {args:.}", "isort {args:.}"]
 
-[tool.black]
-line-length = 88
-target-version = ["py38", "py39", "py310", "py311", "py312", "py313", "py314"]
+[[tool.hatch.envs.all.matrix]]
+python = ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+
+[tool.hatch.envs.all]
+installer = "uv"
+dependencies = ["pytest", "pytest-cov", "pytest-xdist"]
+
+[tool.hatch.envs.all.scripts]
+test = "pytest {args:tests}"
+
+[tool.pylint.main]
+ignore-paths = ["tests"]
 
 [tool.isort]
 profile = "black"
-line_length = 88
+
+[tool.black]
+target-version = ["py38", "py39", "py310", "py311", "py312", "py313", "py314"]
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
 
 [tool.bandit]
 targets = ["mgzip"]
 skips = ["B101"]
 
-[tool.flake8]
-max-line-length = 88
-extend-ignore = ["E203", "W503"]
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
