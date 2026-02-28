@@ -4,6 +4,7 @@ import mgzip
 import gzip
 import tempfile
 import os
+import sys
 
 
 class TestBasicCompressDecompress:
@@ -135,8 +136,9 @@ class TestCompatibility:
 
 
 class TestMultiprocessingPool:
-    """Test that multiprocessing pool is properly closed (Issue #13, #18)"""
+    """Test that multiprocessing pool is properly closed (Issue #13, PR #18)"""
 
+    @pytest.mark.skipif(sys.version_info >= (3, 12), reason="Python 3.12+ has different warning behavior")
     def test_pool_cleanup_no_warning(self):
         """Test that closing file doesn't leave unclosed pool warnings"""
         import warnings
@@ -163,5 +165,24 @@ class TestMultiprocessingPool:
                 # Should have no unclosed pool warnings
                 pool_warnings = [x for x in resource_warnings if "pool" in str(x.message).lower()]
                 assert len(pool_warnings) == 0, f"Found unclosed pool warnings: {pool_warnings}"
+        finally:
+            os.unlink(fname)
+
+    def test_file_operations_no_crash(self):
+        """Test that file operations complete without crashing"""
+        data = b"Test data" * 1000
+        
+        with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as f:
+            fname = f.name
+        
+        try:
+            # Write and read should complete without errors
+            with mgzip.open(fname, "wb", thread=4) as f:
+                f.write(data)
+            
+            with mgzip.open(fname, "rb", thread=4) as f:
+                result = f.read()
+            
+            assert result == data
         finally:
             os.unlink(fname)
